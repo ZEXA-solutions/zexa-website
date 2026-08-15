@@ -784,7 +784,7 @@ drawer.querySelectorAll('nav a').forEach(function(a){
 var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 var MAX_FILE = 10 * 1024 * 1024;
 var OK_EXT = ['pdf','doc','docx','jpg','jpeg','png'];
-var FORM_EMAIL = 'forms1@zexasolutions.com'; // FormSubmit.co delivery address — must click the one-time activation email FormSubmit sends here before submissions actually arrive
+var FORM_EMAIL = 'forms1@zexasolutions.com'; // FormSubmit.co delivery address. Must click the one-time activation email FormSubmit sends here before submissions actually arrive
 
 var form = document.getElementById('rfq-form');
 var submitBtn = document.getElementById('rfq-submit');
@@ -857,26 +857,43 @@ form.addEventListener('submit', async function(e){
   }
 
   var d = LANG[window.__currentLang];
+  var subject = 'RFQ / Inquiry from ' + (form.company.value || form.name.value || 'Website');
+
+  // FormSubmit's AJAX endpoint (used below) only documents plain-field submissions.
+  // Their own attachment example uses a traditional, page-navigating multipart POST instead. That is the only path they document as actually delivering the file. So: if a file is
+  // attached, fall back to a real form submission (redirected back here via _next) instead of
+  // fetch/AJAX. Text-only messages keep the instant, no-reload path.
+  if (fileInput.files[0]){
+    submitBtn.disabled = true;
+    submitBtn.textContent = d.sending;
+    setHidden(form, '_subject', subject);
+    setHidden(form, '_template', 'table');
+    setHidden(form, '_captcha', 'false');
+    setHidden(form, '_next', location.origin + location.pathname + '?sent=1#contact');
+    form.action = 'https://formsubmit.co/' + FORM_EMAIL;
+    form.method = 'POST';
+    form.enctype = 'multipart/form-data';
+    form.submit(); // native submit. Does not re-trigger this listener, page will navigate away and back
+    return;
+  }
+
   submitBtn.disabled = true;
   submitBtn.textContent = d.sending;
 
   var fd = new FormData();
-  fd.append('_subject', 'RFQ / Inquiry from ' + (form.company.value || form.name.value || 'Website'));
+  fd.append('_subject', subject);
   fd.append('_template', 'table');
   fd.append('_captcha', 'false');
   fd.append('company', form.company.value);
   fd.append('name', form.name.value);
   fd.append('email', form.email.value);
   fd.append('message', form.message.value);
-  if (fileInput.files[0]) fd.append('attachment', fileInput.files[0], fileInput.files[0].name);
 
   try{
     var res = await fetch('https://formsubmit.co/ajax/' + FORM_EMAIL, { method:'POST', headers:{ Accept:'application/json' }, body: fd });
     if (res.ok){
       okMsg.classList.add('show');
       form.reset();
-      filerow.classList.remove('has-file');
-      filechip.classList.remove('show');
     } else {
       errMsg.classList.add('show');
     }
@@ -888,8 +905,26 @@ form.addEventListener('submit', async function(e){
   }
 });
 
+function setHidden(form, name, value){
+  var el = form.querySelector('input[name="' + name + '"]');
+  if (!el){
+    el = document.createElement('input');
+    el.type = 'hidden';
+    el.name = name;
+    form.appendChild(el);
+  }
+  el.value = value;
+}
+
 // ---- init ----
 applyI18n('en');
+
+// If we're back from a redirected (attachment) submission, show the success message once.
+if (location.search.indexOf('sent=1') !== -1){
+  okMsg.classList.add('show');
+  var cleanUrl = location.origin + location.pathname + location.hash;
+  history.replaceState(null, '', cleanUrl);
+}
 })();
 </script>
 </body>
